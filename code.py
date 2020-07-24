@@ -211,5 +211,7 @@ est_phi=sum(re['phi'])/re['phi'].shape[0]
 est_theta=sum(re['theta'])/re['theta'].shape[0]
 
 print(est_phi)
+np.savetxt("est_phi.csv", est_phi, delimiter=",")
 print(est_theta)
+np.savetxt("est_theta.csv", est_theta, delimiter=",")
 print(re['WAIC'])
