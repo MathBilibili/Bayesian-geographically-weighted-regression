@@ -212,3 +212,4 @@ est_theta=sum(re['theta'])/re['theta'].shape[0]
 
 print(est_phi)
 print(est_theta)
+print(re['WAIC'])
