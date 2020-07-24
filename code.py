@@ -10,9 +10,12 @@ import os
 import pandas as pd
 from scipy.special import loggamma
 import scipy.stats
-#from multiprocessing.dummy import Pool as ThreadPool
+from datetime import datetime
+from multiprocessing import Pool
 
-os.chdir("D:\\360download\\nus_statistics\\Cam_biostat\\Yangs_report\\200701\\code")
+is_para = True
+
+#os.chdir("D:\\360download\\nus_statistics\\Cam_biostat\\Yangs_report\\200701\\code")
 
 # set multiple cores
 #pool = ThreadPool(4)
@@ -92,7 +95,8 @@ def weight_like(data_slice,loc_int,phi,theta,h):
 
 def joint_like(data,loc_int,phi,theta,h):
     slice_like = lambda x: weight_like(x,loc_int,phi,theta,h)
-    result = sum( data.apply(slice_like,axis=1) )
+    #result = sum( data.apply(slice_like,axis=1) )
+    result = sum(map(slice_like,data.values))
     result += (prior_phi(phi) + sum(list(map(prior_theta, theta))))
     return(result)
     
@@ -135,18 +139,21 @@ def GWR_update(model_info):
     phi_old = model_info[0]
     theta_old = model_info[1]
     loc_int = model_info[2]
+    joint_old = model_info[3]
     theta_focus = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
     phi_new = r_phi(phi_old)
     theta_new = list(map(r_theta,theta_old))
-    rate = joint_like(data,loc_int,phi_new,theta_new,h) + d_phi(phi_old,phi_new) + d_theta(theta_old,theta_new) - joint_like(data,loc_int,phi_old,theta_old,h) - d_phi(phi_new,phi_old) - d_theta(theta_new,theta_old)
+    joint_new = joint_like(data,loc_int,phi_new,theta_new,h)
+    rate = joint_new + d_phi(phi_old,phi_new) + d_theta(theta_old,theta_new) - joint_old - d_phi(phi_new,phi_old) - d_theta(theta_new,theta_old)
     alfa = min(1,np.exp(rate))
     runif = np.random.uniform(0,1,1)[0]
     phi_old = phi_new if runif < alfa else phi_old
     theta_old = theta_new if runif <alfa else theta_old
+    joint_old = joint_new if runif <alfa else joint_old
     sto_theta = theta_old[theta_focus]
-    return([list(phi_old),theta_old,loc_int,sto_theta])
+    return([list(phi_old),theta_old,loc_int,joint_old,sto_theta])
     
-init = [[[1,1,1],[1]*num_location,list(x)] for x in location[['x','y']].values] 
+init = [[[1,1,1],[1]*num_location,list(x),joint_like(data,x,[1,1,1],[1]*num_location,h)] for x in location[['x','y']].values] 
 
 # redefine weighted likelihood function for a single theta
 def weight_like_s(data_slice,loc_int,phi,theta,h):
@@ -165,16 +172,22 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
     WAIC_two = np.zeros(num_location)
     for i in range(num_iter):
         if( (i<=(burn_in-1)) | ((i+1) % thin !=0)):
-            iter_param = list(map(GWR_update,iter_param))
+            if(is_para):
+                iter_param = list(pool.map(GWR_update,iter_param))
+            else:
+                iter_param = list(map(GWR_update,iter_param))
         else:
-            iter_param = list(map(GWR_update,iter_param))
+            if(is_para):
+                iter_param = list(pool.map(GWR_update,iter_param))
+            else:
+                iter_param = list(map(GWR_update,iter_param))
             for j in range(num_location):
                 sub_log_lik = 0
                 loc_foc = list(location.loc[location['index']==j][['x','y']].values[0])
                 subdata=data.loc[(data['x']==loc_foc[0]) & (data['y']==loc_foc[1])]
                 sto_phi[((i+1-burn_in)//thin) - 1][j] = iter_param[j][0]
-                sto_theta[((i+1-burn_in)//thin) - 1][j] = iter_param[j][3] 
-                slice_like = lambda x: weight_like_s(x,loc_foc,iter_param[j][0],iter_param[j][3],h)
+                sto_theta[((i+1-burn_in)//thin) - 1][j] = iter_param[j][4] 
+                slice_like = lambda x: weight_like_s(x,loc_foc,iter_param[j][0],iter_param[j][4],h)
                 sub_log_lik = sum( subdata.apply(slice_like,axis=1) )
                 MC_log[j] += sub_log_lik
                 log_MC[j] += np.exp(sub_log_lik)
@@ -184,3 +197,18 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
             print([i,WAIC])
     result = {'phi':sto_phi,'theta':sto_theta,'WAIC':WAIC}
     return(result)
+    
+    
+time_one = datetime.now()
+if __name__ == '__main__':
+    pool = Pool(processes=10)
+    re=GWR_MCMC_multloc(init,10,1,0)
+time_two = datetime.now()
+
+print(time_two-time_one)
+
+est_phi=sum(re['phi'])/re['phi'].shape[0]
+est_theta=sum(re['theta'])/re['theta'].shape[0]
+
+print(est_phi)
+print(est_theta)
