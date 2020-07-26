@@ -194,7 +194,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
                 WAIC_one[j] = MC_log[j]/((i+1-burn_in)//thin)
                 WAIC_two[j] = np.log(log_MC[j]/((i+1-burn_in)//thin))
             WAIC = np.mean(2*WAIC_two - WAIC_one)
-            print([i,WAIC])
+            print([i,WAIC], flush=True)
     result = {'phi':sto_phi,'theta':sto_theta,'WAIC':WAIC}
     return(result)
     
