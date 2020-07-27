@@ -194,7 +194,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
                 WAIC_one[j] = MC_log[j]/((i+1-burn_in)//thin)
                 WAIC_two[j] = np.log(log_MC[j]/((i+1-burn_in)//thin))
             WAIC = np.mean(2*WAIC_two - WAIC_one)
-            print([i,WAIC], flush=True)
+            print('{0}% complete. The WAIC is: {site}'.format((i+1)*100/num_iter, site=WAIC), flush=True)
     result = {'phi':sto_phi,'theta':sto_theta,'WAIC':WAIC}
     return(result)
     
@@ -209,6 +209,11 @@ print(time_two-time_one)
 
 est_phi=sum(re['phi'])/re['phi'].shape[0]
 est_theta=sum(re['theta'])/re['theta'].shape[0]
+
+phi_trace = np.zeros(shape=[re['phi'].shape[0],3])
+for k in range(re['phi'].shape[0]):
+    phi_trace[k] = re['phi'][k][re['phi'][0].shape[0]//2]
+np.savetxt('phi_trace.csv',phi_trace,delimiter=',')
 
 print(est_phi)
 np.savetxt("est_phi.csv", est_phi, delimiter=",")
