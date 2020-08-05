@@ -14,6 +14,7 @@ from datetime import datetime
 from multiprocessing import Pool
 
 is_para = True
+num_core = 10
 
 #os.chdir("D:\\360download\\nus_statistics\\Cam_biostat\\Yangs_report\\200701\\code")
 
@@ -85,21 +86,48 @@ location = data[['x','y']].drop_duplicates(subset=['x','y'])
 num_location = location.shape[0]
 location['index']=range(num_location)
 
-
-def weight_like(data_slice,loc_int,phi,theta,h):
+def kernel_weight(data_slice,loc_int,h):
     loc1=data_slice[0:2]
-    theta_ind = int(location.loc[(location['x']==loc1[0]) & (location['y']==loc1[1])]['index'])
     dis = eucliDis(loc1,loc_int)
     kern = G_kernel(dis,h)
-    return(kern*negBion(data_slice[2],data_slice[3],data_slice[4:],phi,theta[theta_ind]))
+    return(kern)
 
+#geographical weighting kernel
+geo_weight = np.zeros(shape=[num_location,data.shape[0]])
+theta_rep_num = np.zeros(num_location)
+for i in range(num_location):
+    loc_int_inner = location.values[i][0:2]
+    slice_weight = lambda x: kernel_weight(x,loc_int_inner,h)
+    geo_weight[i] = np.array(list(map(slice_weight,data.values)))
+    theta_rep_num[i] = np.equal(data.iloc[:,:2].values, location[['x','y']].values[i]).all(axis=1).sum()
+
+# negative binomial distribution joint likelihood.   Vectorization
 def joint_like(data,loc_int,phi,theta,h):
-    slice_like = lambda x: weight_like(x,loc_int,phi,theta,h)
-    #result = sum( data.apply(slice_like,axis=1) )
-    result = sum(map(slice_like,data.values))
+    loc_ind = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
+    theta_expand = np.repeat(np.array(theta),theta_rep_num.astype(int))   
+    outcome = np.array(data['outcome'])
+    offset = np.array(data['offset'])
+    covariate = np.array(data.iloc[:, 4:])
+    mean = np.exp(np.log(offset) + np.array(list(map(sum,covariate*np.array(phi)))))
+    result = sum(geo_weight[loc_ind]*(loggamma(outcome+1/theta_expand)-loggamma(1/theta_expand)-loggamma(outcome+1)-(1/theta_expand)*np.log(1+theta_expand*mean)+outcome*np.log(theta_expand*mean/(1+theta_expand*mean))))
     result += (prior_phi(phi) + sum(list(map(prior_theta, theta))))
     return(result)
-    
+
+#def weight_like(data_slice,loc_int,phi,theta,h):
+#    loc1=data_slice[0:2]
+#    theta_ind = int(location.loc[(location['x']==loc1[0]) & (location['y']==loc1[1])]['index'])
+#    dis = eucliDis(loc1,loc_int)
+#    kern = G_kernel(dis,h)
+#    return(kern*negBion(data_slice[2],data_slice[3],data_slice[4:],phi,theta[theta_ind]))
+
+
+#def joint_like(data,loc_int,phi,theta,h):
+#    slice_like = lambda x: weight_like(x,loc_int,phi,theta,h)
+#    #result = sum( data.apply(slice_like,axis=1) )
+#    result = sum(map(slice_like,data.values))
+#    result += (prior_phi(phi) + sum(list(map(prior_theta, theta))))
+#    return(result)
+  
 #init=[[1,1],[1]*num_location]
 
 
@@ -176,6 +204,8 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
                 iter_param = list(pool.map(GWR_update,iter_param))
             else:
                 iter_param = list(map(GWR_update,iter_param))
+            if((i+1) % thin == 0):
+                print('{0}% complete.'.format((i+1)*100/num_iter), flush=True)
         else:
             if(is_para):
                 iter_param = list(pool.map(GWR_update,iter_param))
@@ -201,7 +231,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
     
 time_one = datetime.now()
 if __name__ == '__main__':
-    pool = Pool(processes=10)
+    pool = Pool(processes=num_core)
     re=GWR_MCMC_multloc(init,10,1,0)
 time_two = datetime.now()
 
