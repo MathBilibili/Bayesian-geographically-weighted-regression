@@ -13,6 +13,10 @@ import scipy.stats
 from datetime import datetime
 from multiprocessing import Pool
 
+
+task_id = int(os.getenv('SLURM_ARRAY_TASK_ID'))
+print([task_id,type(task_id)],flush=True)
+
 is_para = True
 num_core = 10
 
@@ -22,7 +26,7 @@ num_core = 10
 #pool = ThreadPool(4)
 
 #geographical kernel bandwidth
-h = 1
+h = [0.0001,0.5,1,2,5,10][task_id-1]
 
 #Geographically weighted kernel
 def G_kernel(d,h):
@@ -232,7 +236,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
 time_one = datetime.now()
 if __name__ == '__main__':
     pool = Pool(processes=num_core)
-    re=GWR_MCMC_multloc(init,10,1,0)
+    re=GWR_MCMC_multloc(init,16000,10,3000)
 time_two = datetime.now()
 
 print(time_two-time_one)
@@ -243,10 +247,10 @@ est_theta=sum(re['theta'])/re['theta'].shape[0]
 phi_trace = np.zeros(shape=[re['phi'].shape[0],3])
 for k in range(re['phi'].shape[0]):
     phi_trace[k] = re['phi'][k][re['phi'][0].shape[0]//2]
-np.savetxt('phi_trace.csv',phi_trace,delimiter=',')
+np.savetxt('phi_trace'+str(h)+'.csv',phi_trace,delimiter=',')
 
 print(est_phi)
-np.savetxt("est_phi.csv", est_phi, delimiter=",")
+np.savetxt("est_phi"+str(h)+".csv", est_phi, delimiter=",")
 print(est_theta)
-np.savetxt("est_theta.csv", est_theta, delimiter=",")
+np.savetxt("est_theta"+str(h)+".csv", est_theta, delimiter=",")
 print(re['WAIC'])
