@@ -69,7 +69,7 @@ def d_phi(phi_n,phi):
 
 #proposal theta
 def r_theta(theta):
-    lower, upper, sd = 0, 1000, 0.1
+    lower, upper, sd = 0, 1000, 0.01
     X = scipy.stats.truncnorm(
           (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
     return float(X.rvs(size=1))
@@ -77,7 +77,7 @@ def r_theta(theta):
 def d_theta(theta_n,theta):
     theta_n = np.array(theta_n)
     theta = np.array(theta)
-    lower, upper, sd = 0, 1000, 0.1
+    lower, upper, sd = 0, 1000, 0.01
     X = scipy.stats.truncnorm(
           (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
     return sum(np.log(X.pdf(theta_n)))
@@ -244,10 +244,11 @@ print(time_two-time_one)
 est_phi=sum(re['phi'])/re['phi'].shape[0]
 est_theta=sum(re['theta'])/re['theta'].shape[0]
 
-phi_trace = np.zeros(shape=[re['phi'].shape[0],3])
+trace = np.zeros(shape=[re['phi'].shape[0],re['phi'].shape[2]+re['theta'].shape[2]])
 for k in range(re['phi'].shape[0]):
-    phi_trace[k] = re['phi'][k][re['phi'][0].shape[0]//2]
-np.savetxt('phi_trace'+str(h)+'.csv',phi_trace,delimiter=',')
+    trace[k][0:re['phi'].shape[2]] = re['phi'][k][re['phi'][0].shape[0]//2]
+    trace[k][re['phi'].shape[2]:] = re['theta'][k][re['theta'][0].shape[0]//2]
+np.savetxt('trace'+str(h)+'.csv',trace,delimiter=',')
 
 print(est_phi)
 np.savetxt("est_phi"+str(h)+".csv", est_phi, delimiter=",")
