@@ -27,8 +27,10 @@ for i in range(10):
     for j in range(10):
         x=i+1
         y=j+1
-        phi=[3,0.02*np.sqrt((x)**2+(y)**2),0.05*(np.sin(x/2)+np.cos(y/2)+4)]
-        theta = float(np.random.uniform(0.5,0.6,1))
+        #phi=[3,0.02*np.sqrt((x)**2+(y)**2),0.05*(np.sin(x/2)+np.cos(y/2)+4)]
+        phi=[3,0.15,0.22]
+        #theta = float(np.random.uniform(0.5,0.6,1))
+        theta = float(np.random.normal(0.5,0.01,1))
         for n in range(20):
             covariate=[1,float(np.random.uniform(0,2,1)),float(np.random.uniform(2,7,1))]
             outcome = int(rv_binom(offset,covariate,phi,theta))
