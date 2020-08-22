@@ -69,15 +69,15 @@ def prior_theta(theta):
 #proposal phi
 def r_phi(phi):
     phi = np.array(phi)
-    phi_n = np.random.normal(loc=phi,scale=1,size=len(phi))
+    phi_n = np.random.normal(loc=phi,scale=0.05,size=len(phi))
     return phi_n
 
 def d_phi(phi_n,phi):
-    return sum(np.log(scipy.stats.norm(phi, 1).pdf(phi_n)))
+    return sum(np.log(scipy.stats.norm(phi, 0.05).pdf(phi_n)))
 
 #proposal theta
 def r_theta(theta):
-    lower, upper, sd = 0, 1000, 0.01
+    lower, upper, sd = 0, 1000, 0.05
     X = scipy.stats.truncnorm(
           (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
     return float(X.rvs(size=1))
@@ -85,7 +85,7 @@ def r_theta(theta):
 def d_theta(theta_n,theta):
     theta_n = np.array(theta_n)
     theta = np.array(theta)
-    lower, upper, sd = 0, 1000, 0.01
+    lower, upper, sd = 0, 1000, 0.05
     X = scipy.stats.truncnorm(
           (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
     return sum(np.log(X.pdf(theta_n)))
