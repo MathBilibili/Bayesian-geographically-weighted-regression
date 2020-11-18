@@ -69,15 +69,15 @@ def prior_theta(theta):
 #proposal phi
 def r_phi(phi):
     phi = np.array(phi)
-    phi_n = np.random.normal(loc=phi,scale=0.05,size=len(phi))
+    phi_n = np.random.normal(loc=phi,scale=0.2,size=len(phi))
     return phi_n
 
 def d_phi(phi_n,phi):
-    return sum(np.log(scipy.stats.norm(phi, 0.05).pdf(phi_n)))
+    return sum(np.log(scipy.stats.norm(phi, 0.2).pdf(phi_n)))
 
 #proposal theta
 def r_theta(theta):
-    lower, upper, sd = 0, 1000, 0.05
+    lower, upper, sd = 0, 1000, 0.2
     X = scipy.stats.truncnorm(
           (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
     return float(X.rvs(size=1))
@@ -85,7 +85,7 @@ def r_theta(theta):
 def d_theta(theta_n,theta):
     theta_n = np.array(theta_n)
     theta = np.array(theta)
-    lower, upper, sd = 0, 1000, 0.05
+    lower, upper, sd = 0, 1000, 0.2
     X = scipy.stats.truncnorm(
           (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
     return sum(np.log(X.pdf(theta_n)))
@@ -162,6 +162,7 @@ def GWR_update(model_info):
     theta_old = model_info[1]
     loc_int = model_info[2]
     joint_old = model_info[3]
+    accept_num = model_info[5]
     theta_focus = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
     phi_new = r_phi(phi_old)
     theta_new = list(map(r_theta,theta_old))
@@ -172,10 +173,13 @@ def GWR_update(model_info):
     phi_old = phi_new if runif < alfa else phi_old
     theta_old = theta_new if runif <alfa else theta_old
     joint_old = joint_new if runif <alfa else joint_old
+    accept_num = (accept_num + 1) if runif <alfa else accept_num
     sto_theta = theta_old[theta_focus]
-    return([list(phi_old),theta_old,loc_int,joint_old,sto_theta])
+    return([list(phi_old),theta_old,loc_int,joint_old,sto_theta,accept_num])
     
-init = [[[1,1,1],[1]*num_location,list(x),joint_like(data,x,[1,1,1],[1]*num_location,h)] for x in location[['x','y']].values] 
+init_phi = [2,1,1]
+    
+init = [[init_phi,[1]*num_location,list(x),joint_like(data,x,init_phi,[1]*num_location,h),1,0] for x in location[['x','y']].values] 
 
 # redefine weighted likelihood function for a single theta
 def weight_like_s(data_slice,loc_int,phi,theta,h):
@@ -203,6 +207,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
                 iter_param = list(pool.map(GWR_update,iter_param))
             else:
                 iter_param = list(map(GWR_update,iter_param))
+            accept_number = []
             for j in range(num_location):
                 sub_log_lik = 0
                 loc_foc = list(location.loc[location['index']==j][['x','y']].values[0])
@@ -210,12 +215,14 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
                 subdata=data.iloc[index_sel[j]]
                 sto_phi[((i+1-burn_in)//thin) - 1][j] = iter_param[j][0]
                 sto_theta[((i+1-burn_in)//thin) - 1][j] = iter_param[j][4] 
+                accept_number.append(iter_param[j][5])
                 slice_like = lambda x: weight_like_s(x,loc_foc,iter_param[j][0],iter_param[j][4],h)
                 sub_log_lik = sum( subdata.apply(slice_like,axis=1) )
                 loglik_sum[j] += sub_log_lik
                 elpd[j] = loglik_sum[j]/((i+1-burn_in)//thin)
+            accept_rate = np.mean(np.array(accept_number)/i)
             elpd_mean = np.mean(elpd)
-            print('{0}% complete. The ELPD is: {site}'.format((i+1)*100/num_iter, site=elpd_mean), flush=True)
+            print('{0}% complete. The ELPD is: {site}. The average acceptance rate is: {rate}'.format((i+1)*100/num_iter, site=elpd_mean, rate=accept_rate), flush=True)
     result = {'phi':sto_phi,'theta':sto_theta,'ELPD':elpd_mean}
     return(result)
     
