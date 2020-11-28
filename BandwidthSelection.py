@@ -34,7 +34,7 @@ fitting_ratio = 0.5
 #pool = ThreadPool(4)
 
 #geographical kernel bandwidth
-h = [0.0001,0.5,1,2,5,10][task_id-1]
+h = [0.0001,0.5,0.7,1,2,4][task_id-1]
 
 #Geographically weighted kernel
 def G_kernel(d,h):
@@ -69,11 +69,11 @@ def prior_theta(theta):
 #proposal phi
 def r_phi(phi):
     phi = np.array(phi)
-    phi_n = np.random.normal(loc=phi,scale=0.2,size=len(phi))
+    phi_n = np.random.normal(loc=phi,scale=[0.1,0.01,0.01],size=len(phi))
     return phi_n
 
 def d_phi(phi_n,phi):
-    return sum(np.log(scipy.stats.norm(phi, 0.2).pdf(phi_n)))
+    return sum(np.log(scipy.stats.norm(phi, [0.1,0.01,0.01]).pdf(phi_n)))
 
 #proposal theta
 def r_theta(theta):
@@ -115,19 +115,21 @@ def kernel_weight(data_slice,loc_int,h):
     return(kern)
 
 #geographical weighting kernel
-geo_weight = []
+weight = []
 theta_rep_num = np.zeros(shape=[num_location,num_location])
 for i in range(num_location):
     loc_int_inner = location.values[i][0:2]
     slice_weight = lambda x: kernel_weight(x,loc_int_inner,h)
-    geo_weight.append(np.array(list(map(slice_weight,data.drop(index_sel[i]).values))))
+    weight.append(np.array([0]*i+list(map(slice_weight,data.drop_duplicates(subset=['x','y']).iloc[i:,:].values))))
     for j in range(num_location):
         theta_rep_num[i][j] = np.equal(data.drop(index_sel[i]).iloc[:,:2].values, location[['x','y']].values[j]).all(axis=1).sum()
-
-geo_weight = np.array(geo_weight)
+        
+weight = np.array(weight)        
+weight = weight + weight.T - np.eye(num_location)
+geo_weight = [np.repeat(weight[i],theta_rep_num[i].astype(int)) for i in range(num_location)]
 
 # negative binomial distribution joint likelihood.   Vectorization
-def joint_like(data,loc_int,phi,theta,h):
+def joint_like(data,loc_int,phi,theta):
     loc_ind = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
     theta_expand = np.repeat(np.array(theta),theta_rep_num[loc_ind].astype(int))   
     outcome = np.array(data.drop(index_sel[loc_ind])['outcome'])
@@ -166,7 +168,7 @@ def GWR_update(model_info):
     theta_focus = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
     phi_new = r_phi(phi_old)
     theta_new = list(map(r_theta,theta_old))
-    joint_new = joint_like(data,loc_int,phi_new,theta_new,h)
+    joint_new = joint_like(data,loc_int,phi_new,theta_new)
     rate = joint_new + d_phi(phi_old,phi_new) + d_theta(theta_old,theta_new) - joint_old - d_phi(phi_new,phi_old) - d_theta(theta_new,theta_old)
     alfa = min(1,np.exp(rate))
     runif = np.random.uniform(0,1,1)[0]
@@ -179,7 +181,7 @@ def GWR_update(model_info):
     
 init_phi = [2,1,1]
     
-init = [[init_phi,[1]*num_location,list(x),joint_like(data,x,init_phi,[1]*num_location,h),1,0] for x in location[['x','y']].values] 
+init = [[init_phi,[1]*num_location,list(x),joint_like(data,x,init_phi,[1]*num_location),1,0] for x in location[['x','y']].values] 
 
 # redefine weighted likelihood function for a single theta
 def weight_like_s(data_slice,loc_int,phi,theta,h):
@@ -230,7 +232,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
 time_one = datetime.now()
 if __name__ == '__main__':
     pool = Pool(processes=num_core)
-    re=GWR_MCMC_multloc(init,16000,10,3000)
+    re=GWR_MCMC_multloc(init,23000,10,5000)
 time_two = datetime.now()
 
 print(time_two-time_one)
