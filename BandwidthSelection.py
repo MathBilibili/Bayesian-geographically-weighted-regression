@@ -20,7 +20,6 @@ import scipy.stats
 from datetime import datetime
 from multiprocessing import Pool
 
-
 task_id = int(os.getenv('SLURM_ARRAY_TASK_ID'))
 print([task_id,type(task_id)],flush=True)
 
@@ -52,7 +51,7 @@ def negBion(outcome,offset,covariate,phi,theta):
     result = loggamma(outcome+1/theta)-loggamma(1/theta)-loggamma(outcome+1)-(1/theta)*np.log(1+theta*mean)+outcome*np.log(theta*mean/(1+theta*mean))
     return result
 
-#log-prior phi (uniform)
+#log-prior phi (uniform) 
 def prior_phi(phi):
     if max(abs(np.array(phi)))>1000:
         return np.log(0)
@@ -67,17 +66,24 @@ def prior_theta(theta):
         return np.log(1/1000)
     
 #proposal phi
+        
+pro_st = np.array([[ 0.18401274, -0.00699975, -0.02846574],
+       [-0.00699975,  0.01451714, -0.00777127],
+       [-0.02846574, -0.00777127,  0.02269074]])
+
+pro = np.dot(pro_st/2,pro_st/2)   
+    
 def r_phi(phi):
     phi = np.array(phi)
-    phi_n = np.random.normal(loc=phi,scale=[0.1,0.01,0.01],size=len(phi))
+    phi_n = scipy.stats.multivariate_normal(phi,pro).rvs(1)
     return phi_n
 
 def d_phi(phi_n,phi):
-    return sum(np.log(scipy.stats.norm(phi, [0.1,0.01,0.01]).pdf(phi_n)))
+    return np.log(scipy.stats.multivariate_normal(phi,pro).pdf(phi_n))
 
 #proposal theta
 def r_theta(theta):
-    lower, upper, sd = 0, 1000, 0.2
+    lower, upper, sd = 0, 1000, 0.05
     X = scipy.stats.truncnorm(
           (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
     return float(X.rvs(size=1))
@@ -85,7 +91,7 @@ def r_theta(theta):
 def d_theta(theta_n,theta):
     theta_n = np.array(theta_n)
     theta = np.array(theta)
-    lower, upper, sd = 0, 1000, 0.2
+    lower, upper, sd = 0, 1000, 0.05
     X = scipy.stats.truncnorm(
           (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
     return sum(np.log(X.pdf(theta_n)))
