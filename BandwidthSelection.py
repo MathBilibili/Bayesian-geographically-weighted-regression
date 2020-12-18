@@ -2,7 +2,7 @@
 """
 Created on Sat Dec  5 18:02:50 2020
 
-@author: Yang Liu
+@author: Administrator
 """
 
 # -*- coding: utf-8 -*-
@@ -33,6 +33,7 @@ print([task_id,type(task_id)],flush=True)
 is_para = True    #Using parallel computing？
 num_core = 10     #number of cores
 fitting_ratio = 0.5    #the proportion of samples used for fitting at the location of interest (i.e., splitting samples at location of interest into fitting set and testing set).
+is_eucliDis = True      #Using Euclidian distance?
 
 #os.chdir("D:\\360download\\nus_statistics\\Cam_biostat\\Yangs_report\\200701\\code")
 
@@ -51,6 +52,31 @@ def eucliDis(A,B):
     A = np.array(A)
     B = np.array(B)
     return np.sqrt(sum((A-B)**2))
+
+#spherical distance (measured in KM)
+def Haversine(A,B):
+    """
+    This uses the ‘haversine’ formula to calculate the great-circle distance between two points – that is, 
+    the shortest distance over the earth’s surface – giving an ‘as-the-crow-flies’ distance between the points 
+    (ignoring any hills they fly over, of course!).
+    Haversine
+    formula:    a = sin²(Δφ/2) + cos φ1 ⋅ cos φ2 ⋅ sin²(Δλ/2)
+    c = 2 ⋅ atan2( √a, √(1−a) )
+    d = R ⋅ c
+    where   φ is latitude, λ is longitude, R is earth’s radius (mean radius = 6,371km);
+    note that angles need to be in radians to pass to trig functions!
+    """
+    lat1,lon1,lat2,lon2 = A[0],A[1],B[0],B[1]
+    
+    R = 6378.0088
+    lat1,lon1,lat2,lon2 = map(np.radians, [lat1,lon1,lat2,lon2])
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2) **2
+    c = 2 * np.arctan2(a**0.5, (1-a)**0.5)
+    d = R * c
+    return round(d,4)
 
 #log-likelihood of negative binomial distribution
 def negBion(outcome,offset,covariate,phi,theta):
@@ -134,7 +160,10 @@ for k in range(num_location):
 #given a observation (data_slice) and a location of interest (loc_int), this function calculate the geographical weight
 def kernel_weight(data_slice,loc_int,h):
     loc1=data_slice[0:2]
-    dis = eucliDis(loc1,loc_int)
+    if(is_eucliDis = True):
+        dis = eucliDis(loc1,loc_int)
+    else:
+        dis = Haversine(loc1,loc_int)
     kern = G_kernel(dis,h)
     return(kern)
 
@@ -214,7 +243,10 @@ init = [[init_phi,[1]*num_location,list(x),joint_like(data,x,init_phi,[1]*num_lo
 # redefine weighted likelihood function for a single sample, this function is used to calculate the likelihood value of samples from testing set (cross validation).
 def weight_like_s(data_slice,loc_int,phi,theta,h):
     loc1=data_slice[0:2]
-    dis = eucliDis(loc1,loc_int)
+    if(is_eucliDis = True):
+        dis = eucliDis(loc1,loc_int)
+    else:
+        dis = Haversine(loc1,loc_int)
     kern = G_kernel(dis,h)
     return(kern*negBion(data_slice[2],data_slice[3],data_slice[4:],phi,theta))
 
