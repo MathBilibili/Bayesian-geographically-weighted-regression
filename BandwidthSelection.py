@@ -160,7 +160,7 @@ for k in range(num_location):
 #given a observation (data_slice) and a location of interest (loc_int), this function calculate the geographical weight
 def kernel_weight(data_slice,loc_int,h):
     loc1=data_slice[0:2]
-    if(is_eucliDis = True):
+    if(is_eucliDis == True):
         dis = eucliDis(loc1,loc_int)
     else:
         dis = Haversine(loc1,loc_int)
@@ -243,7 +243,7 @@ init = [[init_phi,[1]*num_location,list(x),joint_like(data,x,init_phi,[1]*num_lo
 # redefine weighted likelihood function for a single sample, this function is used to calculate the likelihood value of samples from testing set (cross validation).
 def weight_like_s(data_slice,loc_int,phi,theta,h):
     loc1=data_slice[0:2]
-    if(is_eucliDis = True):
+    if(is_eucliDis == True):
         dis = eucliDis(loc1,loc_int)
     else:
         dis = Haversine(loc1,loc_int)
