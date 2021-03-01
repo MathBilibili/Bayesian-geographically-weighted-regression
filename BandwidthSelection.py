@@ -14,9 +14,11 @@ import scipy.stats
 from datetime import datetime
 from multiprocessing import Pool
 
-task_id = int(os.getenv('SLURM_ARRAY_TASK_ID'))
-print([task_id,type(task_id)],flush=True)
+file_id = int(os.getenv('SLURM_ARRAY_TASK_ID'))
+#print([task_id,type(task_id)],flush=True)
 
+task_id = (file_id-1)//5
+rep_id = file_id%5
 is_para = True    #Using parallel computing？
 num_core = 10     #number of cores
 fitting_ratio = 0.5    #the proportion of samples used for fitting at the location of interest (i.e., splitting samples at location of interest into fitting set and testing set).
@@ -29,7 +31,7 @@ is_block = False        #block sampling?
 #pool = ThreadPool(4)
 
 #geographical kernel bandwidth
-h = [0.0001,0.5,0.7,1,2,3,4,5,6,7,10,20][task_id-1]
+h = [0.0001,0.5,0.7,1,2,3,4,5,6,7,10,20][task_id]
 
 #Geographically weighted kernel (exponential kernel)
 def G_kernel(d,h):
@@ -105,11 +107,11 @@ pro_theta_later = [0.05,0.05,0.05,0.05,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03]
 #proposal sampling function for phi (multivariate normal)
 def r_phi(phi):
     phi = np.array(phi)
-    phi_n = scipy.stats.multivariate_normal(phi,pro_early[task_id-1]).rvs(1)
+    phi_n = scipy.stats.multivariate_normal(phi,pro_early[task_id]).rvs(1)
     return phi_n
 #proposal density function for phi
 def d_phi(phi_n,phi):
-    return np.log(scipy.stats.multivariate_normal(phi,pro_early[task_id-1]).pdf(phi_n))
+    return np.log(scipy.stats.multivariate_normal(phi,pro_early[task_id]).pdf(phi_n))
 
 #proposal sampling function for theta (truncated normal)
 def r_theta(theta):
@@ -301,25 +303,25 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
             if(i == (burn_in-1)):     #update proposal distribution after burn-in
                 def r_phi(phi):
                     phi = np.array(phi)
-                    phi_n = scipy.stats.multivariate_normal(phi,pro_later[task_id-1]).rvs(1)
+                    phi_n = scipy.stats.multivariate_normal(phi,pro_later[task_id]).rvs(1)
                     return phi_n
                 def d_phi(phi_n,phi):
-                    return np.log(scipy.stats.multivariate_normal(phi,pro_later[task_id-1]).pdf(phi_n))
+                    return np.log(scipy.stats.multivariate_normal(phi,pro_later[task_id]).pdf(phi_n))
                 def r_theta(theta):
-                    lower, upper, sd = 0, 1000, pro_theta_later[task_id-1]
+                    lower, upper, sd = 0, 1000, pro_theta_later[task_id]
                     X = scipy.stats.truncnorm(
                             (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
                     return float(X.rvs(size=1))
                 def d_theta(theta_n,theta):
                     theta_n = np.array(theta_n)
                     theta = np.array(theta)
-                    lower, upper, sd = 0, 1000, pro_theta_later[task_id-1]
+                    lower, upper, sd = 0, 1000, pro_theta_later[task_id]
                     X = scipy.stats.truncnorm(
                             (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
                     return sum(np.log(X.pdf(theta_n)))
                 
-            if((i+1) % thin == 0):
-                print('{0}% complete.'.format((i+1)*100/num_iter), flush=True)
+            #if((i+1) % thin == 0):
+                #print('{0}% complete.'.format((i+1)*100/num_iter), flush=True)
         else:
             if(is_para):
                 iter_param = list(pool.map(GWR_update,iter_param))      #one step metropolis hasting update for all locations in parallel
@@ -340,7 +342,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
                 elpd[j] = loglik_sum[j]/((i+1-burn_in)//thin)       #elpd at location j = the mean of all likelihoods of testing set at location j before iteration i
             accept_rate = np.mean(np.array(accept_number)/i)        #calculate the mean acceptance rate
             elpd_mean = np.mean(elpd)       #mean of elpd across all locations
-            print('{0}% complete. The ELPD is: {site}. The average acceptance rate is: {rate}'.format((i+1)*100/num_iter, site=elpd_mean, rate=accept_rate), flush=True)
+            #print('{0}% complete. The ELPD is: {site}. The average acceptance rate is: {rate}'.format((i+1)*100/num_iter, site=elpd_mean, rate=accept_rate), flush=True)
     result = {'phi':sto_phi,'theta':sto_theta,'ELPD':elpd_mean}
     return(result)
     
@@ -348,7 +350,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
 time_one = datetime.now()
 if __name__ == '__main__':
     pool = Pool(processes=num_core)
-    re=GWR_MCMC_multloc(init,13000,1,3000)
+    re=GWR_MCMC_multloc(init,7000,1,3000)
 time_two = datetime.now()
 
 print(time_two-time_one)        #time used for MCMC updates
@@ -360,10 +362,10 @@ trace = np.zeros(shape=[re['phi'].shape[0],re['phi'].shape[2]+re['theta'].shape[
 for k in range(re['phi'].shape[0]):
     trace[k][0:re['phi'].shape[2]] = re['phi'][k][re['phi'][0].shape[0]//2]
     trace[k][re['phi'].shape[2]:] = re['theta'][k][re['theta'][0].shape[0]//2]
-np.savetxt('trace'+str(h)+'.csv',trace,delimiter=',')
+#np.savetxt('trace'+str(h)+'.csv',trace,delimiter=',')
 
-print(est_phi)
-np.savetxt("est_phi"+str(h)+".csv", est_phi, delimiter=",")
-print(est_theta)
-np.savetxt("est_theta"+str(h)+".csv", est_theta, delimiter=",")
-print(re['ELPD'])
+#print(est_phi)
+#np.savetxt("est_phi"+str(h)+".csv", est_phi, delimiter=",")
+#print(est_theta)
+#np.savetxt("est_theta"+str(h)+".csv", est_theta, delimiter=",")
+print([h,re['ELPD']])
