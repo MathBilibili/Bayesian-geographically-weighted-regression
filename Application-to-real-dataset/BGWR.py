@@ -25,7 +25,7 @@ fitting_ratio = 0    #the proportion of samples used for testing at the location
 is_eucliDis = False      #Using Euclidian distance?
 is_block = True        #block sampling?
 
-#os.chdir("D:\\360download\\nus_statistics\\Cam_biostat\\Yangs_report\\200701\\real_example\\老数据")
+#os.chdir("D:\\360download\\nus_statistics\\Cam_biostat\\Yangs_report\\200701\\real_example")
 
 # set multiple cores
 #pool = ThreadPool(4)
@@ -157,7 +157,7 @@ def d_theta(theta_n,theta):
 
 
 #import data from file
-data = pd.read_csv('EpiData(test).csv',encoding='utf-8',header=0)
+data = pd.read_csv('EpiData.csv',encoding='utf-8',header=0)
 #extract coordinates of locations
 location = data[['x','y']].drop_duplicates(subset=['x','y'])
 #number of locations
