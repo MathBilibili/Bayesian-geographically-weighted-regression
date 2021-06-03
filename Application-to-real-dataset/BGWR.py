@@ -25,7 +25,6 @@ fitting_ratio = 0    #the proportion of samples used for testing at the location
 is_eucliDis = False      #Using Euclidian distance?
 is_block = True        #block sampling?
 
-#os.chdir("D:\\360download\\nus_statistics\\Cam_biostat\\Yangs_report\\200701\\real_example")
 
 # set multiple cores
 #pool = ThreadPool(4)
