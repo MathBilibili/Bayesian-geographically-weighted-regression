@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Dec 19 14:08:10 2020
+Created on Sat Feb 19 14:08:10 2022
 
 @author: Yang Liu
 """
@@ -17,21 +17,25 @@ from multiprocessing import Pool
 file_id = int(os.getenv('SLURM_ARRAY_TASK_ID'))
 #print([task_id,type(task_id)],flush=True)
 
-task_id = (file_id-1)//5
-rep_id = file_id%5
+task_id = (file_id-1)//10
+rep_id = file_id%10
 is_para = True    #Using parallel computing？
 num_core = 10     #number of cores
 fitting_ratio = 0    #the proportion of samples used for testing at the location of interest (i.e., splitting samples at location of interest into fitting set and testing set).
 is_eucliDis = True      #Using Euclidian distance?
 is_block = True        #block sampling?
 
-
-
 # set multiple cores
 #pool = ThreadPool(4)
 
+
 #geographical kernel bandwidth
-h = [0.0001,1,20][task_id]
+h = [0.0001,4,1000][task_id]
+
+print('h is {h}'.format(h=h), flush=True)
+
+# set multiple cores
+#pool = ThreadPool(4)
 
 #Geographically weighted kernel (exponential kernel)
 def G_kernel(d,h):
@@ -89,20 +93,24 @@ def prior_theta(theta):
         return np.log(1/1000)
     
 #baseline proposal sd for phi (proportional to estimated correlation matrix of phi)
-pro_st = np.array([[ 0.18401274, -0.00699975, -0.02846574],
-       [-0.00699975,  0.01451714, -0.00777127],
-       [-0.02846574, -0.00777127,  0.02269074]])
+#pro_st = np.array([[ 0.19800107, -0.03503183, -0.0323151],
+#       [-0.03503183,  0.03827607, -0.00078348],
+#       [-0.0323151 , -0.00078348,  0.00733836]])
 
+pro_st = np.array([[ 0.199212513, -0.00319569314, -0.037421612],
+       [-0.00319569314, 0.0079491569, 0.000190719635],
+       [-0.037421612, 0.000190719635, 0.00757105334]])
+    
 #two step adatpive proposal sd:
 #aggressive proposal sd for phi to approximate true value before burn_in
-pro_early = [np.dot(pro_st*2,pro_st*2),np.dot(pro_st,pro_st),np.dot(pro_st/2,pro_st/2)]
+pro_early = [np.dot(pro_st*2,pro_st*2),np.dot(pro_st,pro_st),np.dot(pro_st,pro_st),np.dot(pro_st,pro_st),np.dot(pro_st,pro_st),np.dot(pro_st,pro_st),np.dot(pro_st,pro_st),np.dot(pro_st,pro_st),np.dot(pro_st,pro_st),np.dot(pro_st,pro_st)]
 #mild proposal sd for phi to achieve a good mixture after burn_in
-pro_later = [np.dot(pro_st*2,pro_st*2),np.dot(pro_st,pro_st),np.dot(pro_st/6,pro_st/6)]
+pro_later = [np.dot(pro_st*2,pro_st*2),np.dot(pro_st/5,pro_st/5),np.dot(pro_st/5,pro_st/5),np.dot(pro_st/5,pro_st/5),np.dot(pro_st/5,pro_st/5),np.dot(pro_st/5,pro_st/5),np.dot(pro_st/10,pro_st/10),np.dot(pro_st/10,pro_st/10),np.dot(pro_st/10,pro_st/10),np.dot(pro_st/10,pro_st/10)]
  
 #aggressive proposal sd for theta to approximate true value before burn_in 
-pro_theta_early = [0.05,0.05,0.03]
+pro_theta_early = [0.05,0.03,0.03,0.03,0.015,0.015,0.005,0.004,0.004,0.004]
 #mild proposal sd for theta to achieve a good mixture after burn_in
-pro_theta_later = [0.05,0.05,0.03]
+pro_theta_later = [0.05,0.015,0.015,0.015,0.005,0.005,0.005,0.004,0.004,0.004]
 
 #proposal sampling function for phi (multivariate normal)
 def r_phi(phi):
@@ -124,33 +132,28 @@ def d_phi_new(phi_n,phi):
 
 #proposal sampling function for theta (truncated normal)
 def r_theta(theta):
-    lower, upper, sd = 0, 1000, pro_theta_early[task_id]
-    X = scipy.stats.truncnorm(
-          (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
-    return float(X.rvs(size=1))
+    sd = pro_theta_early[task_id]
+    out = np.random.normal(theta, sd, len(theta))
+    out[out<=0] = 0.001
+    return out
+
 #proposal density function for theta
 def d_theta(theta_n,theta):
-    theta_n = np.array(theta_n)
-    theta = np.array(theta)
-    lower, upper, sd = 0, 1000, pro_theta_early[task_id]
-    X = scipy.stats.truncnorm(
-          (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
-    return sum(np.log(X.pdf(theta_n)))
+    sd =  pro_theta_early[task_id]
+    return sum(scipy.stats.norm.pdf(theta_n, theta, sd))
 
 #proposal sampling function for theta (truncated normal)
 def r_theta_new(theta):
-    lower, upper, sd = 0, 1000, pro_theta_later[task_id]
-    X = scipy.stats.truncnorm(
-          (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
-    return float(X.rvs(size=1))
+    sd = pro_theta_later[task_id]
+    out = np.random.normal(theta, sd, len(theta))
+    out[out<=0] = 0.001
+    return out
+
 #proposal density function for theta
 def d_theta_new(theta_n,theta):
-    theta_n = np.array(theta_n)
-    theta = np.array(theta)
-    lower, upper, sd = 0, 1000, pro_theta_later[task_id]
-    X = scipy.stats.truncnorm(
-          (lower-theta)/sd,(upper-theta)/sd,loc=theta,scale=sd)
-    return sum(np.log(X.pdf(theta_n)))
+    sd =  pro_theta_later[task_id]
+    return sum(scipy.stats.norm.pdf(theta_n, theta, sd))
+
 
 
 #import data from file
@@ -170,7 +173,7 @@ for k in range(num_location):
     index_loc = data[(data['x']==loc_foc[0]) & (data['y']==loc_foc[1])].index
     num_sel = int(len(index_loc)*fitting_ratio)
     index_sel.append(np.sort(np.random.choice(index_loc,size=num_sel,replace=False)))
-
+    
 #given a observation (data_slice) and a location of interest (loc_int), this function calculate the geographical weight
 def kernel_weight(data_slice,loc_int,h):
     loc1=data_slice[0:2]
@@ -186,42 +189,86 @@ def kernel_weight(data_slice,loc_int,h):
 weight = []
 theta_rep_num = np.zeros(shape=[num_location,num_location])
 theta_slice_ind = np.zeros(shape=[num_location,(num_location+1)])
+
+theta_slice_ind_full = [np.equal(data.iloc[:,:2].values, location[['x','y']].values[i]).all(axis=1).sum() for i in range(num_location)]
+theta_slice_ind_drop = []
+for i in range(num_location):
+    theta_slice_ind_drop.append(np.equal(data.drop(index_sel[i]).iloc[:,:2].values, location[['x','y']].values[i]).all(axis=1).sum())
+for i in range(num_location):
+    theta_rep_num[i] = theta_slice_ind_full
+    theta_rep_num[i][i] = theta_slice_ind_drop[i]
+
 for i in range(num_location):
     loc_int_inner = location.values[i][0:2]
     slice_weight = lambda x: kernel_weight(x,loc_int_inner,h)
     weight.append(np.array([0]*i+list(map(slice_weight,data.drop_duplicates(subset=['x','y']).iloc[i:,:].values))))
-    for j in range(num_location):
-        theta_rep_num[i][j] = np.equal(data.drop(index_sel[i]).iloc[:,:2].values, location[['x','y']].values[j]).all(axis=1).sum()
     theta_slice_ind[i] = np.append(0,[sum(theta_rep_num[i][:(k+1)]) for k in range(len(theta_rep_num[i]))])
+
 
 theta_slice_ind = theta_slice_ind.astype(int)        
 weight = np.array(weight)        
 weight = weight + weight.T - np.eye(num_location)
 geo_weight = [np.repeat(weight[i],theta_rep_num[i].astype(int)) for i in range(num_location)]
 
+
+#data index that is omitted due to very low weight:
+minimum_threshold = 10**(-1)
+drop_set = []
+theta_num = np.zeros(num_location)
+for j in range(num_location):
+    theta_num[j] = np.equal(data.iloc[:,:2].values, location[['x','y']].values[j]).all(axis=1).sum()
+for i in range(num_location):
+    set_one = index_sel[i]
+    full_geo_weight = np.repeat(weight[i],theta_num.astype(int)) 
+    set_two = np.where(full_geo_weight<minimum_threshold)[0]
+    drop_set.append(np.array(list(set(set_one).union(set(set_two)))))
+
+geo_weight_cut = []
+for i in range(num_location):
+    if(len(drop_set[i])==0):
+        geo_weight_cut.append(np.repeat(weight[i],theta_num.astype(int)))
+    else:
+        geo_weight_cut.append(np.delete(np.repeat(weight[i],theta_num.astype(int)),drop_set[i]))
+
+
+
+print("geo_weight has been calculated")
+
 # joint log-density of negative binomial likelihood and prior given a certain location of interest.   Vectorization for fast calculation
-def joint_like(data,loc_int,phi,theta):
-    loc_ind = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
-    theta_expand = np.repeat(np.array(theta),theta_rep_num[loc_ind].astype(int))   
-    outcome = np.array(data.drop(index_sel[loc_ind])['outcome'])
-    offset = np.array(data.drop(index_sel[loc_ind])['offset'])
-    covariate = np.array(data.drop(index_sel[loc_ind]).iloc[:, 4:])
-    mean = np.exp(np.log(offset) + np.array(list(map(sum,covariate*np.array(phi)))))
-    result = sum(geo_weight[loc_ind]*(loggamma(outcome+1/theta_expand)-loggamma(1/theta_expand)-loggamma(outcome+1)-(1/theta_expand)*np.log(1+theta_expand*mean)+outcome*np.log(theta_expand*mean/(1+theta_expand*mean))))
-    result += (prior_phi(phi) + sum(list(map(prior_theta, theta))))
-    return(result)
+def joint_like(data,loc_ind,phi,theta,if_cut):
+    if(if_cut == True):
+        theta_expand = np.repeat(np.array(theta),theta_num[loc_ind].astype(int)) 
+        if(len(drop_set[loc_ind])>0):
+            theta_expand = np.delete(theta_expand,drop_set[loc_ind]) 
+        outcome = np.array(data.drop(drop_set[loc_ind])['outcome'])
+        offset = np.array(data.drop(drop_set[loc_ind])['offset'])
+        covariate = np.array(data.drop(drop_set[loc_ind]).iloc[:, 4:])
+        mean = np.exp(np.log(offset) + np.array(list(map(sum,covariate*np.array(phi)))))
+        result = sum(geo_weight_cut[loc_ind]*(loggamma(outcome+1/theta_expand)-loggamma(1/theta_expand)-loggamma(outcome+1)-(1/theta_expand)*np.log(1+theta_expand*mean)+outcome*np.log(theta_expand*mean/(1+theta_expand*mean))))
+        result += (prior_phi(phi) + sum(list(map(prior_theta, theta))))
+        return(result)
+    else:
+        theta_expand = np.repeat(np.array(theta),theta_rep_num[loc_ind].astype(int))   
+        outcome = np.array(data.drop(index_sel[loc_ind])['outcome'])
+        offset = np.array(data.drop(index_sel[loc_ind])['offset'])
+        covariate = np.array(data.drop(index_sel[loc_ind]).iloc[:, 4:])
+        mean = np.exp(np.log(offset) + np.array(list(map(sum,covariate*np.array(phi)))))
+        result = sum(geo_weight[loc_ind]*(loggamma(outcome+1/theta_expand)-loggamma(1/theta_expand)-loggamma(outcome+1)-(1/theta_expand)*np.log(1+theta_expand*mean)+outcome*np.log(theta_expand*mean/(1+theta_expand*mean))))
+        result += (prior_phi(phi) + sum(list(map(prior_theta, theta))))
+        return(result)
+
+
 
 def theta_like(subdata,loc_ind,phi,theta):
-    theta_expand = np.repeat(np.array(theta),theta_rep_num[loc_ind].astype(int))   
+    theta_expand = np.repeat(theta,theta_rep_num[loc_ind][loc_ind].astype(int))   
     outcome = np.array(subdata['outcome'])
     offset = np.array(subdata['offset'])
     covariate = np.array(subdata.iloc[:, 4:])
     mean = np.exp(np.log(offset) + np.array(list(map(sum,covariate*np.array(phi)))))
-    theta_like_value = geo_weight[loc_ind]*(loggamma(outcome+1/theta_expand)-loggamma(1/theta_expand)-loggamma(outcome+1)-(1/theta_expand)*np.log(1+theta_expand*mean)+outcome*np.log(theta_expand*mean/(1+theta_expand*mean)))
-    result = np.array([sum(theta_like_value[theta_slice_ind[loc_ind][k]:theta_slice_ind[loc_ind][k+1]]) for k in range(num_location)])
-    result += np.array(list(map(prior_theta, theta)))
+    result = sum(loggamma(outcome+1/theta_expand)-loggamma(1/theta_expand)-loggamma(outcome+1)-(1/theta_expand)*np.log(1+theta_expand*mean)+outcome*np.log(theta_expand*mean/(1+theta_expand*mean)))
+    result += prior_theta(theta)
     return(result)
-    
+  
     
 
 #old code (discarded)
@@ -243,6 +290,10 @@ def theta_like(subdata,loc_ind,phi,theta):
 #init=[[1,1],[1]*num_location]
     
 
+# redefine weighted likelihood function for a single sample, this function is used to calculate the likelihood value of samples from testing set (cross validation).
+def weight_like_s(data_slice,phi,theta):
+    return(negBion(data_slice[2],data_slice[3],data_slice[4:],phi,theta))
+
 #Given necessary model information "model_info" (i.e., list of value of phi, value of theta, coordinates of location of interest, joint density, value of theta at location of interest, number of accepted proposals),
 #function "GWR_update" updates old "model_info" by one step metropolis hasting. The output is new "model_info".
 #Note that, "GWR_update" only update one location. Therefore, it will be applied in parallel for all locations. See following function "GWR_MCMC_multloc"
@@ -251,93 +302,106 @@ if is_block:
         phi_old = model_info[0]
         theta_old = model_info[1]
         loc_int = model_info[2]
-        loc_ind = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
-        subdata = data.drop(index_sel[loc_ind])
+        loc_ind = model_info[7]
+        subdata = data.loc[(data['x']==loc_int[0]) & (data['y']==loc_int[1])]
         joint_old = model_info[3]
         accept_num = model_info[5]
-        theta_focus = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
+        if_cut = model_info[6]
         phi_new = r_phi(phi_old)
-        theta_new = list(map(r_theta,theta_old))
-        joint_new_phi = joint_like(data,loc_int,phi_new,theta_old)
-        rate_phi = joint_new_phi + d_phi(phi_old,phi_new) - joint_old - d_phi(phi_new,phi_old) 
+        theta_new_ax = r_theta(theta_old)
+        joint_new_phi = joint_like(data,loc_ind,phi_new,theta_new_ax,if_cut)
+        rate_phi = joint_new_phi + d_phi(phi_old,phi_new) + d_theta(theta_old,theta_new_ax) - joint_old - d_phi(phi_new,phi_old) - d_theta(theta_new_ax,theta_old)
         alfa_phi = min(1,np.exp(rate_phi))
         runif = np.random.uniform(0,1,1)[0]
-        phi_old = phi_new if runif < alfa_phi else phi_old
-        accept_num = (accept_num + 1) if runif <alfa_phi else accept_num
+        update_sample = [phi_new,theta_new_ax,joint_new_phi,(accept_num + 1)] if runif < alfa_phi else [phi_old,theta_old,joint_old,accept_num]        
+        phi_old, theta_old, joint_old, accept_num = update_sample[0],update_sample[1],update_sample[2],update_sample[3]
+        theta_new = r_theta(np.array([model_info[4]]))
         joint_new_theta = theta_like(subdata,loc_ind,phi_old,theta_new)
-        joint_old_theta = theta_like(subdata,loc_ind,phi_old,theta_old)
-        rate_theta = joint_new_theta + d_theta(theta_old,theta_new) - joint_old_theta - d_theta(theta_new,theta_old)
-        alfa_theta = np.minimum(np.ones_like(rate_theta),np.exp(rate_theta))
-        runif = np.random.uniform(0,1,len(alfa_theta))
-        theta_pro = [theta_new[q] if runif[q] < alfa_theta[q] else theta_old[q] for q in range(num_location)]
-        theta_old = theta_pro
-        sto_theta = theta_old[theta_focus]
-        joint_old = joint_like(data,loc_int,phi_old,theta_old)
-        return([list(phi_old),theta_old,loc_int,joint_old,sto_theta,accept_num])
+        joint_old_theta = theta_like(subdata,loc_ind,phi_old,model_info[4])
+        rate_theta = joint_new_theta + d_theta(model_info[4],theta_new) - joint_old_theta - d_theta(theta_new,model_info[4])
+        alfa_theta = min(1,np.exp(rate_theta))
+        runif = np.random.uniform(0,1,1)[0]
+        sto_theta = theta_new[0] if runif < alfa_theta else model_info[4]
+        return([list(phi_old),theta_old,loc_int,joint_old,sto_theta,accept_num,if_cut,model_info[7],0])
+        
         
     def GWR_update_new(model_info):
         phi_old = model_info[0]
         theta_old = model_info[1]
         loc_int = model_info[2]
-        loc_ind = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
-        subdata = data.drop(index_sel[loc_ind])
+        loc_ind = model_info[7]
+        subdata = data.loc[(data['x']==loc_int[0]) & (data['y']==loc_int[1])]
         joint_old = model_info[3]
         accept_num = model_info[5]
-        theta_focus = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
+        if_cut = model_info[6]
         phi_new = r_phi_new(phi_old)
-        theta_new = list(map(r_theta_new,theta_old))
-        joint_new_phi = joint_like(data,loc_int,phi_new,theta_old)
-        rate_phi = joint_new_phi + d_phi_new(phi_old,phi_new) - joint_old - d_phi_new(phi_new,phi_old) 
+        theta_new_ax = r_theta_new(theta_old)
+        joint_new_phi = joint_like(data,loc_ind,phi_new,theta_new_ax,if_cut)
+        rate_phi = joint_new_phi + d_phi_new(phi_old,phi_new) + d_theta_new(theta_old,theta_new_ax) - joint_old - d_phi_new(phi_new,phi_old) - d_theta_new(theta_new_ax,theta_old)
         alfa_phi = min(1,np.exp(rate_phi))
         runif = np.random.uniform(0,1,1)[0]
-        phi_old = phi_new if runif < alfa_phi else phi_old
-        accept_num = (accept_num + 1) if runif <alfa_phi else accept_num
+        update_sample = [phi_new,theta_new_ax,joint_new_phi,(accept_num + 1)] if runif < alfa_phi else [phi_old,theta_old,joint_old,accept_num]        
+        phi_old, theta_old, joint_old, accept_num = update_sample[0],update_sample[1],update_sample[2],update_sample[3]
+        theta_new = r_theta_new(np.array([model_info[4]]))
         joint_new_theta = theta_like(subdata,loc_ind,phi_old,theta_new)
-        joint_old_theta = theta_like(subdata,loc_ind,phi_old,theta_old)
-        rate_theta = joint_new_theta + d_theta_new(theta_old,theta_new) - joint_old_theta - d_theta_new(theta_new,theta_old)
-        alfa_theta = np.minimum(np.ones_like(rate_theta),np.exp(rate_theta))
-        runif = np.random.uniform(0,1,len(alfa_theta))
-        theta_pro = [theta_new[q] if runif[q] < alfa_theta[q] else theta_old[q] for q in range(num_location)]
-        theta_old = theta_pro
-        sto_theta = theta_old[theta_focus]
-        joint_old = joint_like(data,loc_int,phi_old,theta_old)
-        return([list(phi_old),theta_old,loc_int,joint_old,sto_theta,accept_num])
+        joint_old_theta = theta_like(subdata,loc_ind,phi_old,model_info[4])
+        rate_theta = joint_new_theta + d_theta_new(model_info[4],theta_new) - joint_old_theta - d_theta_new(theta_new,model_info[4])
+        alfa_theta = min(1,np.exp(rate_theta))
+        runif = np.random.uniform(0,1,1)[0]
+        sto_theta = theta_new[0] if runif < alfa_theta else model_info[4]
+        return([list(phi_old),theta_old,loc_int,joint_old,sto_theta,accept_num,if_cut,model_info[7],0])
+        
+        
 else:
     def GWR_update(model_info):
         phi_old = model_info[0]
         theta_old = model_info[1]
         loc_int = model_info[2]
+        loc_ind = model_info[7]
         joint_old = model_info[3]
         accept_num = model_info[5]
-        theta_focus = int(location.loc[(location['x']==loc_int[0]) & (location['y']==loc_int[1])]['index'])
+        if_cut = model_info[6]
         phi_new = r_phi(phi_old)
-        theta_new = list(map(r_theta,theta_old))
-        joint_new = joint_like(data,loc_int,phi_new,theta_new)
+        theta_new = r_theta(theta_old)
+        joint_new = joint_like(data,loc_ind,phi_new,theta_new,if_cut)
         rate = joint_new + d_phi(phi_old,phi_new) + d_theta(theta_old,theta_new) - joint_old - d_phi(phi_new,phi_old) - d_theta(theta_new,theta_old)
         alfa = min(1,np.exp(rate))
         runif = np.random.uniform(0,1,1)[0]
-        phi_old = phi_new if runif < alfa else phi_old
-        theta_old = theta_new if runif <alfa else theta_old
-        joint_old = joint_new if runif <alfa else joint_old
-        accept_num = (accept_num + 1) if runif <alfa else accept_num
-        sto_theta = theta_old[theta_focus]
-        return([list(phi_old),theta_old,loc_int,joint_old,sto_theta,accept_num])
+        update_sample = [phi_new,theta_new,joint_new,(accept_num + 1)] if runif < alfa else [phi_old,theta_old,joint_old,accept_num]        
+        phi_old, theta_old, joint_old, accept_num = update_sample[0],update_sample[1],update_sample[2],update_sample[3]
+        sto_theta = theta_old[loc_ind]
+        return([list(phi_old),theta_old,loc_int,joint_old,sto_theta,accept_num,if_cut,model_info[7],0])
+        
+    def GWR_update_new(model_info):
+        phi_old = model_info[0]
+        theta_old = model_info[1]
+        loc_int = model_info[2]
+        loc_ind = model_info[7]
+        joint_old = model_info[3]
+        accept_num = model_info[5]
+        if_cut = model_info[6]
+        phi_new = r_phi_new(phi_old)
+        theta_new = r_theta_new(theta_old)
+        joint_new = joint_like(data,loc_ind,phi_new,theta_new,if_cut)
+        rate = joint_new + d_phi_new(phi_old,phi_new) + d_theta_new(theta_old,theta_new) - joint_old - d_phi_new(phi_new,phi_old) - d_theta_new(theta_new,theta_old)
+        alfa = min(1,np.exp(rate))
+        runif = np.random.uniform(0,1,1)[0]     
+        update_sample = [phi_new,theta_new,joint_new,(accept_num + 1)] if runif < alfa else [phi_old,theta_old,joint_old,accept_num]        
+        phi_old, theta_old, joint_old, accept_num = update_sample[0],update_sample[1],update_sample[2],update_sample[3]
+        sto_theta = theta_old[loc_ind]
+        return([list(phi_old),theta_old,loc_int,joint_old,sto_theta,accept_num,if_cut,model_info[7],0])
     
     
+   
 
 #initial value "init" (list of initial phi, initial theta, coordinates of location of interest, initial joint density)    
-init_phi = [2,1,1]    
-init = [[init_phi,[1]*num_location,list(x),joint_like(data,x,init_phi,[1]*num_location),1,0] for x in location[['x','y']].values] 
+#init_phi = [2,1,1]  
+#init_param = pd.read_csv('init_param.csv',encoding='utf-8',header=0)
+#init = [[[init_param.iloc[x]['phi0'],init_param.iloc[x]['phi1'],init_param.iloc[x]['phi2']],[init_param.iloc[x]['theta']]*num_location,list(location[['x','y']].values[x]),joint_like(data,x,[init_param.iloc[x]['phi0'],init_param.iloc[x]['phi1'],init_param.iloc[x]['phi2']],[init_param.iloc[x]['theta']]*num_location,True),init_param.iloc[x]['theta'],0,True,x,0] for x in range(len(location[['x','y']].values))] 
+init_phi = [2.8421216,0.4794747,0.2232922]
+init_theta = 0.5
+init = [[init_phi,[init_theta]*num_location,list(location[['x','y']].values[x]),joint_like(data,x,init_phi,[init_theta]*num_location,True),init_theta,0,True,x,0] for x in range(len(location[['x','y']].values))]
 
-# redefine weighted likelihood function for a single sample, this function is used to calculate the likelihood value of samples from testing set (cross validation).
-def weight_like_s(data_slice,loc_int,phi,theta,h):
-    loc1=data_slice[0:2]
-    if(is_eucliDis == True):
-        dis = eucliDis(loc1,loc_int)
-    else:
-        dis = Haversine(loc1,loc_int)
-    kern = G_kernel(dis,h)
-    return(kern*negBion(data_slice[2],data_slice[3],data_slice[4:],phi,theta))
 
 #MCMC updates of all location simultaneously (mignt be in parallel).
 def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
@@ -352,29 +416,35 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
                 iter_param = list(pool.map(GWR_update,iter_param))      #one step metropolis hasting update for all locations in parallel
             else:
                 iter_param = list(map(GWR_update,iter_param))       #one step metropolis hasting update for all locations
-            #if((i+1) % thin == 0):
-                #print('{0}% complete.'.format((i+1)*100/num_iter), flush=True)
+            if((i+1)%100==0):
+                accept_rate = np.mean(np.array([iter_param[s][5] for s in range(num_location)])/i)
+                print('The average acceptance rate is: {rate}'.format(rate=accept_rate),flush=True)
+                
+            if((i+1) % thin == 0):
+                print('{0}% complete.'.format((i+1)*100/num_iter), flush=True)
         else:
+            if(i%20==0):
+                for s in range(num_location):
+                    iter_param[s][6] = False
+                drop_like = np.array([iter_param[q][3] for q in range(num_location)])
+
             if(is_para):
                 iter_param = list(pool.map(GWR_update_new,iter_param))      #one step metropolis hasting update for all locations in parallel
             else:
                 iter_param = list(map(GWR_update_new,iter_param))       #one step metropolis hasting update for all locations
-            accept_number = []
-            for j in range(num_location):       #calculate the elpd at each location by for loop
-                #sub_log_lik = 0
-                #loc_foc = list(location.loc[location['index']==j][['x','y']].values[0])
-                #testing subdata
-                #subdata=data.iloc[index_sel[j]]     #testing set at location j
-                sto_phi[((i+1-burn_in)//thin) - 1][j] = iter_param[j][0]
-                sto_theta[((i+1-burn_in)//thin) - 1][j] = iter_param[j][4] 
-                accept_number.append(iter_param[j][5])
-                #slice_like = lambda x: weight_like_s(x,loc_foc,iter_param[j][0],iter_param[j][4],h)     #define the likelihood function by using posterior phi and theta at location j of iteration i
-                #sub_log_lik = sum( subdata.apply(slice_like,axis=1) )       #calculate the likelihood of testing set at location j by using posterior phi and theta at iteration i
-                #loglik_sum[j] += sub_log_lik        #add likelihood of testing set at location j of iteration i to previous likelihood storation.
-                #elpd[j] = loglik_sum[j]/((i+1-burn_in)//thin)       #elpd at location j = the mean of all likelihoods of testing set at location j before iteration i
-            #accept_rate = np.mean(np.array(accept_number)/i)        #calculate the mean acceptance rate
-            #elpd_mean = np.mean(elpd)       #mean of elpd across all locations
-            #print('{0}% complete. The ELPD is: {site}. The average acceptance rate is: {rate}'.format((i+1)*100/num_iter, site=elpd_mean, rate=accept_rate), flush=True)
+
+            accept_rate = np.mean(np.array([iter_param[s][5] for s in range(num_location)])/i)     #calculate the mean acceptance rate
+            sto_phi[((i+1-burn_in)//thin) - 1] = np.array([iter_param[s][0] for s in range(num_location)])
+            sto_theta[((i+1-burn_in)//thin) - 1] = np.array([[iter_param[s][4]] for s in range(num_location)])
+            
+            if(i%20==0):
+                #print(sto_phi[((i+1-burn_in)//thin) -1], flush=True)
+                #print('Theta at 800 is: {theta}'.format(theta=sto_theta[((i+1-burn_in)//thin) - 1][800]),flush=True)
+                for s in range(num_location):
+                    iter_param[s][6] = True
+                full_like = np.array([iter_param[q][3] for q in range(num_location)])
+                print('The approximation rate is: {rate}'.format(rate=np.mean(drop_like/full_like)),flush=True)
+            print('{0}% complete. The average acceptance rate is: {rate}'.format((i+1)*100/num_iter, rate=accept_rate), flush=True)
     result = {'phi':sto_phi,'theta':sto_theta}
     return(result)
     
@@ -382,7 +452,7 @@ def GWR_MCMC_multloc(init,num_iter,thin,burn_in):
 time_one = datetime.now()
 if __name__ == '__main__':
     pool = Pool(processes=num_core)
-    re=GWR_MCMC_multloc(init,10000,1,3000)
+    re=GWR_MCMC_multloc(init,4000,1,1000)
 time_two = datetime.now()
 
 print(time_two-time_one)        #time used for MCMC updates
@@ -392,12 +462,12 @@ est_theta=sum(re['theta'])/re['theta'].shape[0]     ##posterior estimation of th
 
 trace = np.zeros(shape=[re['phi'].shape[0],re['phi'].shape[2]+re['theta'].shape[2]])        #trace record of posterior samples (central location only)
 for k in range(re['phi'].shape[0]):
-    trace[k][0:re['phi'].shape[2]] = re['phi'][k][re['phi'][0].shape[0]//2]
-    trace[k][re['phi'].shape[2]:] = re['theta'][k][re['theta'][0].shape[0]//2]
+    trace[k][0:re['phi'].shape[2]] = re['phi'][k][re['phi'][0].shape[0]//2+19]
+    trace[k][re['phi'].shape[2]:] = re['theta'][k][re['theta'][0].shape[0]//2+19]
 np.savetxt('trace'+str(h)+'rep'+str(rep_id)+'.csv',trace,delimiter=',')
 
 print(est_phi)
 np.savetxt("est_phi"+str(h)+'rep'+str(rep_id)+".csv", est_phi, delimiter=",")
 print(est_theta)
 np.savetxt("est_theta"+str(h)+'rep'+str(rep_id)+".csv", est_theta, delimiter=",")
-print([h,re['ELPD']])
+#print([h,re['ELPD']])
